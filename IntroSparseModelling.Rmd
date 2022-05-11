@@ -1,0 +1,91 @@
+---
+title: "Intro to Sparse Modelling"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Extremely Brief Intro to Sparse Modelling
+The point of this intro is to follow up from the powerpoint deck that I used on 9th May 2022 at SEED. I also recommend these two videos as a very basic jumping off point:
+https://www.youtube.com/watch?v=Q81RR3yKn30
+https://www.youtube.com/watch?v=NGf0voTMlcs
+(even though I find the you-tuber pretty annoying)
+
+Just as a reminder after having seen either these videos or my powerpoint:
+Sparse Modelling is a general framework to 1) choose among predictor values when n<<p, 2) increase the interpretablity of models (using fewer predictors) and 3) prevent overfitting. 
+
+There are many different ways to do sparse modelling, which have different pros and cons, and have historically been used with more or less frequency by different fields. 
+
+Examples I went through are:
+1) ridge regression
+2) LASSO
+3) elastic net
+4) Susie
+I also briefly mentioned GEMMA's BSLMM.
+
+I did not get into Bayesian Lasso (BLASSO), with or without Reversiable Jump (RJ), or Random Forest, which we've talked about before. 
+```{r Install packages as needed, echo=FALSE}
+if (!require('susieR')) install.packages('susieR'); library('susieR')
+if (!require('monomvn')) install.packages('monomvn'); library('monomvn')
+if (!require('glmnet')) install.packages('glmnet'); library('glmnet')
+if (!require('MASS')) install.packages('MASS'); library('MASS')
+```
+
+Before we really do anything, I'm going to simulate some data for us. 
+First, I'm going to simulate a ton of multivariate normal parameters, and then I'm going to choose 5 to make y dependent on.
+I've been stealing simulation ideas from: https://aosmith.rbind.io/2018/04/23/simulate-simulate-part-2/#a-single-simulation-for-the-two-level-model
+```{r Simulate Data}
+set.seed(42)
+mu<-rep(0, 100)
+Sigma<-diag(100)
+x<-matrix(mvrnorm(n=100, mu=mu, Sigma=Sigma),nrow=length(mu))
+Y<- 1.1*x[,1] +0.7*x[,2]+ 0.3*x[,3]+0.15*x[,4]+0.05*x[,5] + rnorm(100, 0, 0.5)
+
+## for later, this means our real slopes should be:
+sim_slopes<-c(0, 1.1, 0.7, 0.3, 0.15, 0.05, rep(0, 95))
+```
+Excellent, now we have some data, I'm gonna run through ridge, lasso and elastic net in glmnet. Ridge and lasso can both be done in monomvn as well, but as far as I can tell, elasticnet can't bet, so ymmv.
+
+As we talked about, ridge and lasso are regularization methods that use a lambda penalty to shrink the slope of each parameter, so that the parameter estimates are less dependent on the particular sample data. lambda is chosen using cross validation (CV). The difference between ridge and lasso is that ridge multiples the lambda against the slope^2, whereas lasso multiples lambda against abs(slope), when trying to minimize sum of squares. 
+
+ridge minimizes sum of squares+lambda*slope^2
+lasso minimizes sum of squares+lambda*abs(slope)
+
+Because of this difference, lasso can force slopes to 0, whereas ridge cannot. 
+
+Elastic net is a mix of both.
+
+Here's the intro to glmnet: https://glmnet.stanford.edu/articles/glmnet.html.
+
+NB: alpha is the elasticnet mixing parameter, with alpha=0 is ridge, 1 is LASSO and anything between is a form of elasticnet. 
+
+NB2: Lambda is fit differently for each parameter - I don't know why, but this messed up my thinking a bunch. 
+```{r glmnet}
+
+ elastic.cv <- cv.glmnet(x,Y,type.measure = "deviance", nfolds = 5, alpha = 0.5)
+  cor.test(matrix(coef(elastic.cv))[2:101,], sim_slopes) 
+  
+  ridge.cv <- cv.glmnet(x,Y,type.measure = "deviance", nfolds = 5, alpha = 0)
+  cor.test(matrix(coef(ridge.cv))[2:101,], sim_slopes)
+     
+lasso.cv <- cv.glmnet(x,Y,type.measure = "deviance", nfolds = 5, alpha = 1)
+  cor.test(matrix(coef(lasso.cv))[2:101,], sim_slopes)
+
+```
+
+glmnet has a bunch of internal functions (like coef above, note I used matrix(coef) because otherwise it prints . instead of 0 because sparse), print and predict. Predict is of course useful for when we have predictor variables, but no independent variables. 
+```{r CV plots}
+predict(elastic.cv, newx = matrix(mvrnorm(n=100, mu=rep(0,5), Sigma=diag(5)),nrow=5))
+```
+
+
+###Susie
+
+Okay, the next method we can look at is Susie. Remember that Susie gives sets of variables, so isn't as bothered if variables are correlated. 
+
+```{r Susie}
+
+
+```
