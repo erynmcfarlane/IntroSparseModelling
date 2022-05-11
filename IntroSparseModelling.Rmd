@@ -1,6 +1,8 @@
 ---
 title: "Intro to Sparse Modelling"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -14,7 +16,7 @@ https://www.youtube.com/watch?v=NGf0voTMlcs
 (even though I find the you-tuber pretty annoying)
 
 Just as a reminder after having seen either these videos or my powerpoint:
-Sparse Modelling is a general framework to 1) choose among predictor values when n<<p, 2) increase the interpretablity of models (using fewer predictors) and 3) prevent overfitting. 
+Sparse Modelling is a general framework to 1) choose among predictor values when n less than p, 2) increase the interpretablity of models (using fewer predictors) and 3) prevent overfitting. 
 
 There are many different ways to do sparse modelling, which have different pros and cons, and have historically been used with more or less frequency by different fields. 
 
@@ -26,7 +28,7 @@ Examples I went through are:
 I also briefly mentioned GEMMA's BSLMM.
 
 I did not get into Bayesian Lasso (BLASSO), with or without Reversiable Jump (RJ), or Random Forest, which we've talked about before. 
-```{r Install packages as needed, echo=FALSE}
+```{r Install packages as needed, message=FALSE}
 if (!require('susieR')) install.packages('susieR'); library('susieR')
 if (!require('monomvn')) install.packages('monomvn'); library('monomvn')
 if (!require('glmnet')) install.packages('glmnet'); library('glmnet')
@@ -44,7 +46,7 @@ x<-matrix(mvrnorm(n=100, mu=mu, Sigma=Sigma),nrow=length(mu))
 Y<- 1.1*x[,1] +0.7*x[,2]+ 0.3*x[,3]+0.15*x[,4]+0.05*x[,5] + rnorm(100, 0, 0.5)
 
 ## for later, this means our real slopes should be:
-sim_slopes<-c(0, 1.1, 0.7, 0.3, 0.15, 0.05, rep(0, 95))
+sim_slopes<-c(1.1, 0.7, 0.3, 0.15, 0.05, rep(0, 95))
 ```
 Excellent, now we have some data, I'm gonna run through ridge, lasso and elastic net in glmnet. Ridge and lasso can both be done in monomvn as well, but as far as I can tell, elasticnet can't bet, so ymmv.
 
@@ -65,13 +67,13 @@ NB2: Lambda is fit differently for each parameter - I don't know why, but this m
 ```{r glmnet}
 
  elastic.cv <- cv.glmnet(x,Y,type.measure = "deviance", nfolds = 5, alpha = 0.5)
-  cor.test(matrix(coef(elastic.cv))[2:101,], sim_slopes) 
+  cor.test(matrix(coef(elastic.cv)[2:101, ]), sim_slopes) 
   
   ridge.cv <- cv.glmnet(x,Y,type.measure = "deviance", nfolds = 5, alpha = 0)
-  cor.test(matrix(coef(ridge.cv))[2:101,], sim_slopes)
+  cor.test(matrix(coef(ridge.cv)[2:101, ]), sim_slopes)
      
 lasso.cv <- cv.glmnet(x,Y,type.measure = "deviance", nfolds = 5, alpha = 1)
-  cor.test(matrix(coef(lasso.cv))[2:101,], sim_slopes)
+  cor.test(matrix(coef(lasso.cv)[2:101, ]), sim_slopes)
 
 ```
 
@@ -84,8 +86,10 @@ predict(elastic.cv, newx = matrix(mvrnorm(n=100, mu=rep(0,5), Sigma=diag(5)),nro
 ###Susie
 
 Okay, the next method we can look at is Susie. Remember that Susie gives sets of variables, so isn't as bothered if variables are correlated. 
+L is Maximum number of non-zero effects in the susie regression model. If L is larger than the number of covariates, p, L is set to p. Basically, how many parameters do you think are important (even if you don't know which are which).
 
 ```{r Susie}
-
-
+   susie <- susie(x,Y,L = 10, max_iter = 1000)
+    cor.test(coef(susie)[-1],sim_slopes)
+    hist(susie$pip) ### these are the posterior inclusion probabilities, aka is this parameter included as an important parameter in the sparse framework?
 ```
