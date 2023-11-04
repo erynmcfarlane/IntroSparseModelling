@@ -40,15 +40,15 @@ First, I'm going to simulate a ton of multivariate normal parameters, and then I
 I've been stealing simulation ideas from: https://aosmith.rbind.io/2018/04/23/simulate-simulate-part-2/#a-single-simulation-for-the-two-level-model
 ```{r Simulate Data}
 set.seed(42)
-mu<-rep(0, 100)
-Sigma<-diag(100)
-x<-matrix(mvrnorm(n=100, mu=mu, Sigma=Sigma),nrow=length(mu))
-Y<- 1.1*x[,1] +0.7*x[,2]+ 0.3*x[,3]+0.15*x[,4]+0.05*x[,5] + rnorm(100, 0, 0.5)
+mu<-rep(0, 1000)
+Sigma<-diag(1000)
+x<-matrix(mvrnorm(n=1000, mu=mu, Sigma=Sigma),nrow=length(mu))
+Y<- 1.1*x[,1] +0.7*x[,2]+ 0.3*x[,3]+0.15*x[,4]+0.05*x[,5] + rnorm(1000, 0, 0.5)
 
 ## for later, this means our real slopes should be:
-sim_slopes<-c(1.1, 0.7, 0.3, 0.15, 0.05, rep(0, 95))
+sim_slopes<-c(1.1, 0.7, 0.3, 0.15, 0.05, rep(0, 995))
 ```
-Excellent, now we have some data, I'm gonna run through ridge, lasso and elastic net in glmnet. Ridge and lasso can both be done in monomvn as well, but as far as I can tell, elasticnet can't bet, so ymmv.
+Excellent, now we have some data, I'm gonna run through ridge, lasso and elastic net in glmnet. Ridge and lasso can both be done in monomvn as well, but as far as I can tell, elasticnet can't be, so ymmv.
 
 As we talked about, ridge and lasso are regularization methods that use a lambda penalty to shrink the slope of each parameter, so that the parameter estimates are less dependent on the particular sample data. lambda is chosen using cross validation (CV). The difference between ridge and lasso is that ridge multiples the lambda against the slope^2, whereas lasso multiples lambda against abs(slope), when trying to minimize sum of squares. 
 
@@ -67,20 +67,22 @@ NB2: Lambda is fit differently for each parameter - I don't know why, but this m
 ```{r glmnet}
 
  elastic.cv <- cv.glmnet(x,Y,type.measure = "deviance", nfolds = 5, alpha = 0.5)
-  cor.test(matrix(coef(elastic.cv)[2:101, ]), sim_slopes) 
+  cor.test(matrix(coef(elastic.cv)[2:1001, ]), sim_slopes) 
   
   ridge.cv <- cv.glmnet(x,Y,type.measure = "deviance", nfolds = 5, alpha = 0)
-  cor.test(matrix(coef(ridge.cv)[2:101, ]), sim_slopes)
+  cor.test(matrix(coef(ridge.cv)[2:1001, ]), sim_slopes)
      
 lasso.cv <- cv.glmnet(x,Y,type.measure = "deviance", nfolds = 5, alpha = 1)
-  cor.test(matrix(coef(lasso.cv)[2:101, ]), sim_slopes)
+  cor.test(matrix(coef(lasso.cv)[2:1001, ]), sim_slopes)
 
 ```
+See how well Lasso does there? That's because it's truely for sparse modelling.
 
-glmnet has a bunch of internal functions (like coef above, note I used matrix(coef) because otherwise it prints . instead of 0 because sparse), print and predict. Predict is of course useful for when we have predictor variables, but no independent variables. 
+glmnet has a bunch of internal functions (like coef above, note I used matrix(coef) because otherwise it prints . instead of 0 because sparse), print and predict. Predict is of course useful for when we have predictor variables, but no response variables. 
 ```{r CV plots}
-predict(elastic.cv, newx = matrix(mvrnorm(n=100, mu=rep(0,5), Sigma=diag(5)),nrow=5))
+predict(elastic.cv, newx = matrix(mvrnorm(n=1000, mu=rep(0,5), Sigma=diag(5)),nrow=5))
 ```
+ERYN: Instead of running the models on all of the data, have some set aside data from the MVN at the top that doesn't go into the model. 
 
 
 ###Susie
@@ -93,3 +95,160 @@ L is Maximum number of non-zero effects in the susie regression model. If L is l
     cor.test(coef(susie)[-1],sim_slopes)
     hist(susie$pip) ### these are the posterior inclusion probabilities, aka is this parameter included as an important parameter in the sparse framework?
 ```
+
+
+ERYN: STILL NEED TO ADD PREDICTION TO SUSIE!!!
+
+CHOOSE YOUR OWN ADVENTURES:
+
+Simulate GWAS for unicorn horns:
+
+```{r Unicorn Horn GWAS}
+### This is from Alex Buerkle's Population Genetics lab notes
+###simulate some data
+set.seed(42)
+nloci<-10000  ## we will have data from nloci
+nind<-2000  ## we will have data from nind that were sampled from the true population
+sim.theta<-5  # high parameter means high polymorphism, must be positive and > zero, can be thought of as analygous to nucleotide polymorphism
+
+## simulate allele frequencies at nloci number of loci, by random draws from a beta
+sim.p<-rbeta(nloci, sim.theta, sim.theta)
+hist(sim.p, breaks=seq(0,1,0.1))
+
+# simulate genotypes in the sample
+sim.x <- matrix(rbinom(nloci*nind, 2, prob=sim.p), nrow=nind, ncol=nloci) ### this gives us individuals in rows and snps in columns
+str(sim.x)
+### this is like the .ped set up, but not entirely. 
+
+###some things to note - these are assumed to be independent. This isn't realistic, there would certainly be LD
+### I haven't simulated chromosomes, just allele frequencies
+
+### one more thing to simulate is the phenotypes, and the number of markers that they're based one.
+
+### let's do one that's categorical and based on one SNP, like the horn traits in soay sheep
+
+y_cat<-5+0.7*sim.x[,1]+0.7*sim.x[,100]+0.7*sim.x[,1000]+0.7*sim.x[,1500]+rnorm(2000, 0, 1) ###large effect sizes, not a lot of error
+
+summary(lm(y_cat~sim.x[,1]+sim.x[,100]+sim.x[,1000]+sim.x[,1500]))
+
+summary(lm(y_cat~sim.x[,2]+sim.x[,102]+sim.x[,1002]+sim.x[,1502]))
+
+y_quant<-0.1*sim.x[,10]+0.1*sim.x[,20]+0.1*sim.x[,30]+0.1*sim.x[,40]-0.1*sim.x[,50]-0.1*sim.x[,60]-0.1*sim.x[,70]+0.1*sim.x[,80]+0.1*sim.x[,90]+0.1*sim.x[,100]+rnorm(2000, 0, 5) ###more snps, larger error, smaller effect sizes
+
+hist(y_quant)
+
+y_polygenic<-0.0001*sim.x[,11]+ ###100 snps, larger error, quite small effect sizes
+   0.0001*sim.x[,21]+ 
+  0.0001*sim.x[,31]+ 
+  0.0001*sim.x[,41]+ 
+  0.0001*sim.x[,51]+ 
+  0.0001*sim.x[,61]+ 
+  0.0001*sim.x[,71]+ 
+  0.0001*sim.x[,81]+ 
+  0.0001*sim.x[,91]+ 
+  0.0001*sim.x[,101]+ 
+  0.0001*sim.x[,111]+ 
+  0.0001*sim.x[,121]+ 
+  0.0001*sim.x[,131]+ 
+  0.0001*sim.x[,141]+ 
+  0.0001*sim.x[,151]+ 
+  0.0001*sim.x[,161]+ 
+  0.0001*sim.x[,171]+ 
+  0.0001*sim.x[,181]+ 
+  0.0001*sim.x[,191]+ 
+  0.0001*sim.x[,201]+ 
+  0.0001*sim.x[,211]+ 
+  0.0001*sim.x[,221]+ 
+  0.0001*sim.x[,231]+ 
+  0.0001*sim.x[,241]+ 
+  0.0001*sim.x[,251]+ 
+  0.0001*sim.x[,261]+ 
+  0.0001*sim.x[,271]+ 
+  0.0001*sim.x[,281]+ 
+  0.0001*sim.x[,291]+ 
+  0.0001*sim.x[,301]+ 
+  0.0001*sim.x[,311]+ 
+  0.0001*sim.x[,321]+ 
+  0.0001*sim.x[,331]+ 
+  0.0001*sim.x[,341]+ 
+  0.0001*sim.x[,351]+ 
+  0.0001*sim.x[,361]+ 
+  0.0001*sim.x[,371]+ 
+  0.0001*sim.x[,381]+ 
+  0.0001*sim.x[,391]+ 
+  0.0001*sim.x[,401]+ 
+  0.0001*sim.x[,411]+ 
+  0.0001*sim.x[,421]+ 
+  0.0001*sim.x[,431]+ 
+  0.0001*sim.x[,441]+ 
+  0.0001*sim.x[,451]+ 
+  0.0001*sim.x[,461]+ 
+  0.0001*sim.x[,471]+ 
+  0.0001*sim.x[,481]+ 
+  0.0001*sim.x[,491]+ 
+  0.0001*sim.x[,501]+ 
+  0.0001*sim.x[,511]+ 
+  0.0001*sim.x[,521]+ 
+  0.0001*sim.x[,531]+ 
+  0.0001*sim.x[,541]+ 
+  0.0001*sim.x[,551]+ 
+  0.0001*sim.x[,561]+ 
+  0.0001*sim.x[,571]+ 
+  0.0001*sim.x[,581]+ 
+  0.0001*sim.x[,591]+ 
+  0.0001*sim.x[,601]+ 
+  0.0001*sim.x[,611]+ 
+  0.0001*sim.x[,621]+ 
+  0.0001*sim.x[,631]+ 
+  0.0001*sim.x[,641]+ 
+  0.0001*sim.x[,651]+ 
+  0.0001*sim.x[,661]+ 
+  0.0001*sim.x[,671]+ 
+  0.0001*sim.x[,681]+ 
+  0.0001*sim.x[,691]+ 
+  0.0001*sim.x[,701]+ 
+  0.0001*sim.x[,711]+ 
+  0.0001*sim.x[,721]+ 
+  0.0001*sim.x[,731]+ 
+  0.0001*sim.x[,741]+ 
+  0.0001*sim.x[,751]+ 
+  0.0001*sim.x[,761]+ 
+  0.0001*sim.x[,771]+ 
+  0.0001*sim.x[,781]+ 
+  0.0001*sim.x[,791]+ 
+  0.0001*sim.x[,801]+ 
+  0.0001*sim.x[,811]+ 
+  0.0001*sim.x[,821]+ 
+  0.0001*sim.x[,831]+ 
+  0.0001*sim.x[,841]+ 
+  0.0001*sim.x[,851]+ 
+  0.0001*sim.x[,861]+ 
+  0.0001*sim.x[,871]+ 
+  0.0001*sim.x[,881]+ 
+  0.0001*sim.x[,891]+ 
+  0.0001*sim.x[,901]+ 
+  0.0001*sim.x[,911]+ 
+  0.0001*sim.x[,921]+ 
+  0.0001*sim.x[,931]+ 
+  0.0001*sim.x[,941]+ 
+  0.0001*sim.x[,951]+ 
+  0.0001*sim.x[,961]+ 
+  0.0001*sim.x[,971]+ 
+  0.0001*sim.x[,981]+ 
+  0.0001*sim.x[,991]+ 
+  0.0001*sim.x[,1001]+rnorm(2000, 0, 5)
+```
+
+In groups, analyze the Unicorn data with Susie, Lasso, Ridge and ElasticNet. Which genetic architectures can be recovered with these different methods?
+
+
+####ERYN - FIGURE OUT HOW TO DO SOMETHING LIKE BELOW WITHOUT THE SPARSE SIM FUNCTION?
+
+```{r Dragon Populations}
+
+ popbio<-sparse_sim(n=50+500, p=65, n_causal=15, cluster_size=65, beta_mean = 0, beta_sd=0.5) 
+
+```
+
+
+In groups, analyze the Unicorn data with Susie, Lasso, Ridge and ElasticNet. Which method can best predict where the dragons are going to be?
