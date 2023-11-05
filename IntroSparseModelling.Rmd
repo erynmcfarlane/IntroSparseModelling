@@ -10,13 +10,15 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Extremely Brief Intro to Sparse Modelling
-The point of this intro is to follow up from the powerpoint deck that I used on 9th May 2022 at SEED. I also recommend these two videos as a very basic jumping off point:
+This is the exercise for a Biol 5081 class at York, Fall 2023
+
+I recommend these two videos as a very basic jumping off point:
 https://www.youtube.com/watch?v=Q81RR3yKn30
 https://www.youtube.com/watch?v=NGf0voTMlcs
 (even though I find the you-tuber pretty annoying)
 
 Just as a reminder after having seen either these videos or my powerpoint:
-Sparse Modelling is a general framework to 1) choose among predictor values when n less than p, 2) increase the interpretablity of models (using fewer predictors) and 3) prevent overfitting. 
+Sparse Modelling is a general framework to 1) choose among predictor values when n less than p, 2) increase the interpretablity of models (using fewer predictors) and 3) prevent overfitting (hopefully improving out of sample prediction). 
 
 There are many different ways to do sparse modelling, which have different pros and cons, and have historically been used with more or less frequency by different fields. 
 
@@ -24,12 +26,11 @@ Examples I went through are:
 1) ridge regression
 2) LASSO
 3) elastic net
-4) Susie
-I also briefly mentioned GEMMA's BSLMM.
+
+I also briefly mentioned GEMMA's BSLMM and SuSie.
 
 I did not get into Bayesian Lasso (BLASSO), with or without Reversiable Jump (RJ), or Random Forest, which we've talked about before. 
 ```{r Install packages as needed, message=FALSE}
-if (!require('susieR')) install.packages('susieR'); library('susieR')
 if (!require('monomvn')) install.packages('monomvn'); library('monomvn')
 if (!require('glmnet')) install.packages('glmnet'); library('glmnet')
 if (!require('MASS')) install.packages('MASS'); library('MASS')
@@ -38,12 +39,16 @@ if (!require('MASS')) install.packages('MASS'); library('MASS')
 Before we really do anything, I'm going to simulate some data for us. 
 First, I'm going to simulate a ton of multivariate normal parameters, and then I'm going to choose 5 to make y dependent on.
 I've been stealing simulation ideas from: https://aosmith.rbind.io/2018/04/23/simulate-simulate-part-2/#a-single-simulation-for-the-two-level-model
+
+ERYN: Instead of running the models on all of the data, have some set aside data from the MVN at the top that doesn't go into the model. 
+
+
 ```{r Simulate Data}
 set.seed(42)
 mu<-rep(0, 1000)
 Sigma<-diag(1000)
-x<-matrix(mvrnorm(n=1000, mu=mu, Sigma=Sigma),nrow=length(mu))
-Y<- 1.1*x[,1] +0.7*x[,2]+ 0.3*x[,3]+0.15*x[,4]+0.05*x[,5] + rnorm(1000, 0, 0.5)
+x<-matrix(mvrnorm(n=1000, mu=mu, Sigma=Sigma),nrow=length(mu)) ### simulates the predictor variable
+Y<- 1.1*x[,1] +0.7*x[,2]+ 0.3*x[,3]+0.15*x[,4]+0.05*x[,5] + rnorm(1000, 0, 0.5) ### simulates the response variable
 
 ## for later, this means our real slopes should be:
 sim_slopes<-c(1.1, 0.7, 0.3, 0.15, 0.05, rep(0, 995))
@@ -67,10 +72,12 @@ NB2: Lambda is fit differently for each parameter - I don't know why, but this m
 ```{r glmnet}
 
  elastic.cv <- cv.glmnet(x,Y,type.measure = "deviance", nfolds = 5, alpha = 0.5)
-  cor.test(matrix(coef(elastic.cv)[2:1001, ]), sim_slopes) 
+  cor.test(matrix(coef(elastic.cv)[2:1001, ]), sim_slopes) ###this ask about quality of inference - are the betas close?
+  ### ERYN COME BACK HERE predict(elastic.cv, s=lambda, newx=OOSdata)
+  
   
   ridge.cv <- cv.glmnet(x,Y,type.measure = "deviance", nfolds = 5, alpha = 0)
-  cor.test(matrix(coef(ridge.cv)[2:1001, ]), sim_slopes)
+  cor.test(matrix(coef(ridge.cv)[2:1001, ]), sim_slopes) ###this ask about quality of inference - are the betas close?
      
 lasso.cv <- cv.glmnet(x,Y,type.measure = "deviance", nfolds = 5, alpha = 1)
   cor.test(matrix(coef(lasso.cv)[2:1001, ]), sim_slopes)
@@ -82,22 +89,9 @@ glmnet has a bunch of internal functions (like coef above, note I used matrix(co
 ```{r CV plots}
 predict(elastic.cv, newx = matrix(mvrnorm(n=1000, mu=rep(0,5), Sigma=diag(5)),nrow=5))
 ```
-ERYN: Instead of running the models on all of the data, have some set aside data from the MVN at the top that doesn't go into the model. 
 
 
-###Susie
 
-Okay, the next method we can look at is Susie. Remember that Susie gives sets of variables, so isn't as bothered if variables are correlated. 
-L is Maximum number of non-zero effects in the susie regression model. If L is larger than the number of covariates, p, L is set to p. Basically, how many parameters do you think are important (even if you don't know which are which).
-
-```{r Susie}
-   susie <- susie(x,Y,L = 10, max_iter = 1000)
-    cor.test(coef(susie)[-1],sim_slopes)
-    hist(susie$pip) ### these are the posterior inclusion probabilities, aka is this parameter included as an important parameter in the sparse framework?
-```
-
-
-ERYN: STILL NEED TO ADD PREDICTION TO SUSIE!!!
 
 CHOOSE YOUR OWN ADVENTURES:
 
@@ -239,8 +233,16 @@ y_polygenic<-0.0001*sim.x[,11]+ ###100 snps, larger error, quite small effect si
   0.0001*sim.x[,1001]+rnorm(2000, 0, 5)
 ```
 
-In groups, analyze the Unicorn data with Susie, Lasso, Ridge and ElasticNet. Which genetic architectures can be recovered with these different methods?
+In groups, analyze the Unicorn data with Lasso, Ridge and ElasticNet. Which genetic architectures can be recovered with these different methods?
 
+In groups, analyze the Unicorn data with Lasso, Ridge and ElasticNet. 
+
+Which method recovers all of the SNPs (i.e. has non-zero estimates for the SNPs that you simulated)?
+Which method best predicts OOS unicorn horns?
+
+What happens when you use different genetic architectures (i.e. y_cat vs y_quant vs y_polygenic)?
+
+If you still have time - time for dragons!
 
 ####ERYN - FIGURE OUT HOW TO DO SOMETHING LIKE BELOW WITHOUT THE SPARSE SIM FUNCTION?
 
@@ -249,6 +251,3 @@ In groups, analyze the Unicorn data with Susie, Lasso, Ridge and ElasticNet. Whi
  popbio<-sparse_sim(n=50+500, p=65, n_causal=15, cluster_size=65, beta_mean = 0, beta_sd=0.5) 
 
 ```
-
-
-In groups, analyze the Unicorn data with Susie, Lasso, Ridge and ElasticNet. Which method can best predict where the dragons are going to be?
